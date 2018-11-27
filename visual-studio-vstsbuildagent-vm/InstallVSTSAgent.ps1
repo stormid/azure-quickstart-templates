@@ -114,8 +114,15 @@ do {
 } 
 while ($retries -le $retryCount)
 
-# Construct the agent folder under the main (hardcoded) C: drive.
-$agentInstallationPath = Join-Path "C:" $AgentName 
+# Identify correct destination drive letter for Agent installation.
+Try {
+    $volume = "$(get-volume | where-object {($_.SizeRemaining -GE 350GB) -and ($_.driveletter -ne $($env:SystemDrive).trim(':'))} -erroraction stop | select -first 1 -ExpandProperty DriveLetter):"
+}
+Catch {
+    $volume = $env:systemdrive
+}
+# Construct the agent folder under a volume .
+$agentInstallationPath = Join-Path $volume $AgentName 
 # Create the directory for this agent.
 New-Item -ItemType Directory -Force -Path $agentInstallationPath 
 
