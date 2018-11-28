@@ -13,13 +13,17 @@ Param(
     [Parameter(Mandatory = $false)]$vmAdminPassword
 )
 
-function InitialiseDataDrive {
-    Get-Disk |
-    Where-Object partitionstyle -eq 'raw' |
-    Initialize-Disk -PartitionStyle MBR -PassThru |
-    New-Partition -AssignDriveLetter -UseMaximumSize |
-    Format-Volume -FileSystem NTFS -NewFileSystemLabel "Data" -Confirm:$false
+# Set TLS Channel
+try {
+  # Set TLS 1.2 (3072), then TLS 1.1 (768), then TLS 1.0 (192), finally SSL 3.0 (48)
+  # Use integers because the enumeration values for TLS 1.2 and TLS 1.1 won't
+  # exist in .NET 4.0, even though they are addressable if .NET 4.5+ is
+  # installed (.NET 4.5 is an in-place upgrade).
+  [System.Net.ServicePointManager]::SecurityProtocol = 3072 -bor 768 -bor 192 -bor 48
+} catch {
+  Write-Warning 'Unable to set PowerShell to use TLS 1.2 and TLS 1.1 due to old .NET Framework installed. If you see underlying connection closed or trust errors, you may need to do one or more of the following: (1) upgrade to .NET Framework 4.5 and PowerShell v3, (2) specify internal Chocolatey package location (set $env:chocolateyDownloadUrl prior to install or host the package internally), (3) use the Download + PowerShell method of install. See https://chocolatey.org/install for all install options.'
 }
+
 function PrepMachineForAutologon () {
     # Create a PS session for the user to trigger the creation of the registry entries required for autologon
     $computerName = "localhost"
@@ -121,16 +125,8 @@ do {
 } 
 while ($retries -le $retryCount)
 
-InitialiseData
-
-# Identify correct destination drive letter for Agent installation.
-Try {
-    InitialiseDataDrive -ErrorAction Stop
-    $volume = "$(Get-Volume | Where-Object FileSystemLabel -EQ 'Data' | Select-Object -ExpandProperty DriveLetter):"
-}
-Catch {
-    $volume = $env:systemdrive
-}
+# Identify correct destination drive letter for Agent installation files (including _work directory)
+$volume = "$(get-volume | where-object {($_.SizeRemaining -GE 350GB) -and ($_.driveletter -ne $($env:SystemDrive).trim(':'))} | select -first 1 -ExpandProperty DriveLetter):"
 # Construct the agent folder under a volume .
 $agentInstallationPath = Join-Path $volume $AgentName 
 # Create the directory for this agent.
