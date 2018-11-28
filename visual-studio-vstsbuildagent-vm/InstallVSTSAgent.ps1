@@ -13,6 +13,13 @@ Param(
     [Parameter(Mandatory = $false)]$vmAdminPassword
 )
 
+function InitialiseDataDrive {
+    Get-Disk |
+    Where-Object partitionstyle -eq 'raw' |
+    Initialize-Disk -PartitionStyle MBR -PassThru |
+    New-Partition -AssignDriveLetter -UseMaximumSize |
+    Format-Volume -FileSystem NTFS -NewFileSystemLabel "Data" -Confirm:$false
+}
 function PrepMachineForAutologon () {
     # Create a PS session for the user to trigger the creation of the registry entries required for autologon
     $computerName = "localhost"
@@ -114,9 +121,12 @@ do {
 } 
 while ($retries -le $retryCount)
 
+InitialiseData
+
 # Identify correct destination drive letter for Agent installation.
 Try {
-    $volume = "$(get-volume | where-object {($_.SizeRemaining -GE 350GB) -and ($_.driveletter -ne $($env:SystemDrive).trim(':'))} -erroraction stop | select -first 1 -ExpandProperty DriveLetter):"
+    InitialiseDataDrive -ErrorAction Stop
+    $volume = "$(Get-Volume | Where-Object FileSystemLabel -EQ 'Data' | Select-Object -ExpandProperty DriveLetter):"
 }
 Catch {
     $volume = $env:systemdrive
@@ -170,4 +180,3 @@ Pop-Location
 Write-Verbose "Agent install output: $LASTEXITCODE" -Verbose
 
 Write-Verbose "Exiting InstallVSTSAgent.ps1" -Verbose
-
